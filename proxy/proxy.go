@@ -11,11 +11,13 @@ import (
 	"github.com/tedbennett/lazywatch/config"
 )
 
+type Waiter interface {
+	Wait() 
+}
 
-func NewServer(cfg *config.Config) *http.Server {
+func NewServer(cfg *config.Config, waiter Waiter) *http.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/{path...}", proxyRequest)
-
 
 	ctx := context.Background()
 	server := &http.Server{
@@ -23,6 +25,7 @@ func NewServer(cfg *config.Config) *http.Server {
 		Handler: mux,
 		BaseContext: func(l net.Listener) context.Context {
 			ctx = context.WithValue(ctx, "config", cfg)
+			ctx = context.WithValue(ctx, "waiter", waiter)
 			return ctx
 		},
 	}
@@ -36,6 +39,14 @@ func proxyRequest(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "Failed to initialize config")
 		return
 	}
+	waiter, ok := r.Context().Value("waiter").(Waiter)
+	if !ok {
+		fmt.Fprint(w, "Failed to initialize waiter")
+		return
+	}
+
+	// If the command is invalidated, re-run it. Otherwise, progress immediately.
+	waiter.Wait()
 
 	url := fmt.Sprintf("http://localhost:%s/%s", config.Ports.Server, path)
 	req, _ := http.NewRequest(r.Method, url, r.Body)

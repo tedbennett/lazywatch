@@ -5,12 +5,16 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strings"
+
+	"github.com/tedbennett/lazywatch/command"
 )
 
 type Config struct {
 	Ports  Ports
 	Directory string
 	Client *http.Client
+	Command command.Command
 }
 
 type Ports struct {
@@ -21,6 +25,7 @@ type Ports struct {
 func ParseConfig() (*Config, error) {
 	portsArg := flag.String("p", "3001:3000", "proxyPort:serverPort")
 	dirArg := flag.String("d", "./", "directory to watch")
+	cmdArg := flag.String("c", "go run main.go", "command to run")
 
 	flag.Parse()
 
@@ -28,13 +33,20 @@ func ParseConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	cmd := parseCommand(*cmdArg)
 
 	return &Config{
 		Ports: *ports, 
 		Client: http.DefaultClient, 
 		Directory: *dirArg,
+		Command: cmd,
 	}, nil
 
+}
+
+func parseCommand(arg string) command.Command {
+	slice := strings.Split(arg, " ")
+	return command.NewCommand(slice[0], slice[1:])
 }
 
 func parsePorts(arg string) (*Ports, error) {
