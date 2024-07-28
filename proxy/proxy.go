@@ -14,7 +14,7 @@ import (
 
 func NewServer(cfg *config.Config) *http.Server {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/*", proxyRequest)
+	mux.HandleFunc("/{path...}", proxyRequest)
 
 
 	ctx := context.Background()
@@ -30,14 +30,15 @@ func NewServer(cfg *config.Config) *http.Server {
 }
 
 func proxyRequest(w http.ResponseWriter, r *http.Request) {
+	path := r.PathValue("path")
 	config, ok := r.Context().Value("config").(*config.Config)
 	if !ok {
 		fmt.Fprint(w, "Failed to initialize config")
 		return
 	}
 
-
-	req, _ := http.NewRequest(r.Method, fmt.Sprintf("http://localhost:%s%s", config.Ports.Server, r.URL.RawPath), r.Body)
+	url := fmt.Sprintf("http://localhost:%s/%s", config.Ports.Server, path)
+	req, _ := http.NewRequest(r.Method, url, r.Body)
 	res, err := config.Client.Do(req)
 	if err != nil {
 		fmt.Println("Failed to call server")
