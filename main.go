@@ -10,15 +10,17 @@ import (
 
 	"github.com/tedbennett/lazywatch/config"
 	"github.com/tedbennett/lazywatch/proxy"
+	"github.com/tedbennett/lazywatch/watcher"
 )
-
 
 func main() {
 	config, err := config.ParseConfig()
 	if err != nil {
 		panic(err)
 	}
-	
+
+	watcher.StartWatching(config.Directory, func() { fmt.Println("File changed") })
+
 	server := proxy.NewServer(config)
 
 	go func() {

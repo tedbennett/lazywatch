@@ -9,6 +9,7 @@ import (
 
 type Config struct {
 	Ports  Ports
+	Directory string
 	Client *http.Client
 }
 
@@ -19,6 +20,7 @@ type Ports struct {
 
 func ParseConfig() (*Config, error) {
 	portsArg := flag.String("p", "3001:3000", "proxyPort:serverPort")
+	dirArg := flag.String("d", "./", "directory to watch")
 
 	flag.Parse()
 
@@ -26,7 +28,12 @@ func ParseConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Config{Ports: *ports, Client: http.DefaultClient}, nil
+
+	return &Config{
+		Ports: *ports, 
+		Client: http.DefaultClient, 
+		Directory: *dirArg,
+	}, nil
 
 }
 
@@ -40,8 +47,4 @@ func parsePorts(arg string) (*Ports, error) {
 		Proxy:  matches[1],
 		Server: matches[2],
 	}, nil
-}
-
-func NewConfig(proxy string, server string) *Config {
-	return &Config{Ports: Ports{proxy, server}}
 }
