@@ -75,6 +75,28 @@ func TestProxyServerWildcard(t *testing.T) {
 	}
 }
 
+func TestProxyServerQueryParams(t *testing.T) {
+	tests := []string{"search", "param=param", "param=1&param=2"}
+
+	for _, test := range tests {
+		res, err := http.Get(fmt.Sprintf("http://localhost:%s/query?%s", SERVER_PORT, test))
+		if err != nil {
+			t.Fatalf("Failed to fetch /?%s: %s",test, err)
+		}
+		resBody, err := io.ReadAll(res.Body)
+		if err != nil {
+			t.Fatalf("Failed to read body: %s", err)
+		}
+		if res.StatusCode != 200 {
+			t.Fatalf("Getting root failed: %s", resBody)
+		}
+
+		if string(resBody) != test {
+			t.Fatalf("Unexpected body in get /?%s: %s", test, resBody)
+		}
+	}
+}
+
 func TestProxyServerError(t *testing.T) {
 	res, err := http.Get(fmt.Sprintf("http://localhost:%s/error", SERVER_PORT))
 	if err != nil {
@@ -105,7 +127,9 @@ func MockServer(addr string) *http.Server {
 	mux.HandleFunc("/error", func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error", http.StatusInternalServerError)
 	})
-
+	mux.HandleFunc("/query", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(r.URL.RawQuery))
+	})
 	server := &http.Server{
 		Addr:    addr,
 		Handler: mux,
