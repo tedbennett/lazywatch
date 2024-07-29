@@ -11,10 +11,18 @@ import (
 )
 
 type Config struct {
-	Ports  Ports
+	ports     Ports
 	Directory string
-	Client *http.Client
-	Command command.Command
+	client    *http.Client
+	Command   command.Command
+}
+
+func (c *Config) Ports() Ports {
+	return c.ports
+}
+
+func (c *Config) Client() *http.Client {
+	return c.client
 }
 
 type Ports struct {
@@ -36,10 +44,10 @@ func ParseConfig() (*Config, error) {
 	cmd := parseCommand(*cmdArg)
 
 	return &Config{
-		Ports: *ports, 
-		Client: http.DefaultClient, 
+		ports:     *ports,
+		client:    http.DefaultClient,
 		Directory: *dirArg,
-		Command: cmd,
+		Command:   cmd,
 	}, nil
 
 }

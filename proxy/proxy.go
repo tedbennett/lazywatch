@@ -12,16 +12,21 @@ import (
 )
 
 type Waiter interface {
-	Wait() 
+	Wait()
 }
 
-func NewServer(cfg *config.Config, waiter Waiter) *http.Server {
+type ProxyConfig interface {
+	Ports() config.Ports
+	Client() *http.Client
+}
+
+func NewServer(cfg ProxyConfig, waiter Waiter) *http.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/{path...}", proxyRequest)
 
 	ctx := context.Background()
 	server := &http.Server{
-		Addr:    fmt.Sprintf(":%s", cfg.Ports.Proxy),
+		Addr:    fmt.Sprintf(":%s", cfg.Ports().Proxy),
 		Handler: mux,
 		BaseContext: func(l net.Listener) context.Context {
 			ctx = context.WithValue(ctx, "config", cfg)
@@ -34,7 +39,7 @@ func NewServer(cfg *config.Config, waiter Waiter) *http.Server {
 
 func proxyRequest(w http.ResponseWriter, r *http.Request) {
 	path := r.PathValue("path")
-	config, ok := r.Context().Value("config").(*config.Config)
+	config, ok := r.Context().Value("config").(ProxyConfig)
 	if !ok {
 		fmt.Fprint(w, "Failed to initialize config")
 		return
@@ -48,9 +53,9 @@ func proxyRequest(w http.ResponseWriter, r *http.Request) {
 	// If the command is invalidated, re-run it. Otherwise, progress immediately.
 	waiter.Wait()
 
-	url := fmt.Sprintf("http://localhost:%s/%s", config.Ports.Server, path)
+	url := fmt.Sprintf("http://localhost:%s/%s", config.Ports().Server, path)
 	req, _ := http.NewRequest(r.Method, url, r.Body)
-	res, err := config.Client.Do(req)
+	res, err := config.Client().Do(req)
 	if err != nil {
 		fmt.Println("Failed to call server")
 		return

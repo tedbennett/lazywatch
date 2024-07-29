@@ -21,7 +21,7 @@ func main() {
 	}
 
 	events := make(chan interface{})
-	health := func() bool {return true}
+	health := func() bool { return true }
 	runner, waiter := command.NewRunnerAndWaiter(config.Command, events, health)
 	go runner.Listen(events)
 	go runner.StartCommand()
@@ -32,7 +32,7 @@ func main() {
 	server := proxy.NewServer(config, waiter)
 
 	go func() {
-		fmt.Printf("Listening on port %s\n", config.Ports.Proxy)
+		fmt.Printf("Listening on port %s\n", config.Ports().Proxy)
 		err = server.ListenAndServe()
 		if err != nil {
 			fmt.Println(err)

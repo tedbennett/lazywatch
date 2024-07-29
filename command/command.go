@@ -9,9 +9,6 @@ import (
 	"time"
 )
 
-type Worker struct {
-}
-
 type Command struct {
 	executable string
 	args       []string
