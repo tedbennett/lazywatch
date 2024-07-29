@@ -22,14 +22,16 @@ func main() {
 
 	events := make(chan interface{})
 	health := func() bool { return true }
-	runner, waiter := command.NewRunnerAndWaiter(config.Command, events, health)
-	go runner.Listen(events)
-	go runner.StartCommand()
+	runner := command.NewCommandRunner(config.Command, health)
+	coordinator := command.NewCoordinator(runner, events)
+	notifier := command.NewNotifier(coordinator, events)
+	go coordinator.Listen(events)
+	go runner.Start()
 
 	// Invalidate the current command on FS changes
-	go watcher.StartWatching(config.Directory, runner.Invalidate)
+	go watcher.StartWatching(config.Directory, coordinator.Invalidate)
 
-	server := proxy.NewServer(config, waiter)
+	server := proxy.NewServer(config, notifier)
 
 	go func() {
 		fmt.Printf("Listening on port %s\n", config.Ports().Proxy)
@@ -44,7 +46,7 @@ func main() {
 	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	<-done
 	fmt.Print("Shutting down")
-	runner.KillCommand()
+	runner.Kill()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer func() {
 		cancel()

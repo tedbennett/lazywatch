@@ -25,47 +25,48 @@ func newCmd(command Command) *exec.Cmd {
 	return cmd
 }
 
-type CommandRunner struct {
+// Describes a struct that keeps
+type TaskRunner interface {
+	// Starts a new task
+	// If a previous one exists, it should stop that first
+	Start() error
+	Kill() error
+}
+
+type Coordinator struct {
 	mu *sync.Mutex
 	c  *sync.Cond
 
-	command Command
-	process *os.Process
-	healthy func() bool
-
+	runner      TaskRunner
 	invalidated bool
 }
 
-type CommandWaiter struct {
+type Notifier struct {
 	mu *sync.Mutex
 	c  *sync.Cond
 
 	events chan<- interface{}
 }
 
-func NewRunnerAndWaiter(command Command, events chan interface{}, healthy func() bool) (*CommandRunner, *CommandWaiter) {
+func NewCoordinator(runner TaskRunner, events chan interface{}) *Coordinator {
 	mu := &sync.Mutex{}
-	c := sync.NewCond(mu)
-
-	runner := &CommandRunner{
+	return &Coordinator{
 		mu:          mu,
-		c:           c,
-		command:     command,
-		process:     nil,
-		healthy:     healthy,
+		c:           sync.NewCond(mu),
+		runner:      runner,
 		invalidated: false,
 	}
-
-	waiter := &CommandWaiter{
-		mu:     mu,
-		c:      c,
-		events: events,
-	}
-
-	return runner, waiter
 }
 
-func (cw *CommandWaiter) Wait() {
+func NewNotifier(coord *Coordinator, events chan<- interface{}) *Notifier {
+	return &Notifier{
+		mu:     coord.mu,
+		c:      coord.c,
+		events: events,
+	}
+}
+
+func (cw *Notifier) Wait() {
 	cw.mu.Lock()
 	// Tell the Runner to start building if needed
 	cw.events <- nil
@@ -74,15 +75,45 @@ func (cw *CommandWaiter) Wait() {
 	cw.mu.Unlock()
 }
 
-func (cr *CommandRunner) StartCommand() {
-	cmd := newCmd(cr.command)
-
-	cmd.Start()
-	cr.process = cmd.Process
-	cmd.Wait()
+type CommandRunner struct {
+	process *os.Process
+	command Command
+	healthy func() bool
 }
 
-func (cr *CommandRunner) KillCommand() error {
+func NewCommandRunner(command Command, healthy func() bool) *CommandRunner {
+	return &CommandRunner{
+		command: command,
+		healthy: healthy,
+		process: nil,
+	}
+}
+
+func (cr *CommandRunner) Start() error {
+	err := cr.Kill()
+	if err != nil {
+		return err
+	}
+	go func() {
+		cmd := newCmd(cr.command)
+
+		cmd.Start()
+		cr.process = cmd.Process
+		cmd.Wait()
+	}()
+
+	// Wait until the command is healthy
+	for {
+		if cr.healthy() {
+			break
+		}
+		time.Sleep(time.Millisecond * 50)
+	}
+	return nil
+}
+
+
+func (cr *CommandRunner) Kill() error {
 	if cr.process != nil {
 		if err := syscall.Kill(-cr.process.Pid, syscall.SIGINT); err != nil {
 			return fmt.Errorf("Failed to kill process group")
@@ -92,31 +123,17 @@ func (cr *CommandRunner) KillCommand() error {
 }
 
 // Take the lock and mark the current command as invalidated
-func (cr *CommandRunner) Invalidate() {
+func (cr *Coordinator) Invalidate() {
 	cr.mu.Lock()
 	fmt.Println("Changes made...")
 	cr.invalidated = true
 	cr.mu.Unlock()
 }
 
-func (cr *CommandRunner) HandleEvent() {
+func (cr *Coordinator) HandleEvent() {
 	cr.mu.Lock()
 	if cr.invalidated {
-		// Kill the previous process and it's children
-		if cr.process != nil {
-			cr.KillCommand()
-		}
-
-		// Start the new process
-		go cr.StartCommand()
-
-		// Wait until the command is healthy
-		for {
-			if cr.healthy() {
-				break
-			}
-			time.Sleep(time.Millisecond * 50)
-		}
+		go cr.runner.Start()
 		// Notify listeners that the command has been restarted
 		cr.invalidated = false
 	}
@@ -124,7 +141,7 @@ func (cr *CommandRunner) HandleEvent() {
 	cr.mu.Unlock()
 }
 
-func (cr *CommandRunner) Listen(events <-chan interface{}) {
+func (cr *Coordinator) Listen(events <-chan interface{}) {
 	for range events {
 		cr.HandleEvent()
 	}
