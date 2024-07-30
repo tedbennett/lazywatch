@@ -23,7 +23,7 @@ func main() {
 	events := make(chan interface{})
 	health := func() bool { return true }
 	runner := command.NewCommandRunner(config.Command, health)
-	coordinator := command.NewCoordinator(runner, events)
+	coordinator := command.NewCoordinator(runner)
 	notifier := command.NewNotifier(coordinator, events)
 	go coordinator.Listen(events)
 	go runner.Start()

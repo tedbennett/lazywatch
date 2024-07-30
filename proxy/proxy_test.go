@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/tedbennett/lazywatch/config"
 	"github.com/tedbennett/lazywatch/proxy"
@@ -21,12 +22,18 @@ const (
 )
 
 func setup() {
+	if proxyServer != nil {
+		return
+	}
 	waiter := &MockWaiter{}
 	config := &MockConfig{client: http.DefaultClient}
 	proxyServer = proxy.NewServer(config, waiter)
 	proxiedServer = MockServer(fmt.Sprintf(":%s", SERVER_PORT))
 	go proxyServer.ListenAndServe()
 	go proxiedServer.ListenAndServe()
+
+	// Give the servers a bit of time to spin up
+	time.Sleep(50 * time.Millisecond)
 }
 
 func TestMain(m *testing.M) {
@@ -81,7 +88,7 @@ func TestProxyServerQueryParams(t *testing.T) {
 	for _, test := range tests {
 		res, err := http.Get(fmt.Sprintf("http://localhost:%s/query?%s", SERVER_PORT, test))
 		if err != nil {
-			t.Fatalf("Failed to fetch /?%s: %s",test, err)
+			t.Fatalf("Failed to fetch /?%s: %s", test, err)
 		}
 		resBody, err := io.ReadAll(res.Body)
 		if err != nil {

@@ -48,7 +48,7 @@ type Notifier struct {
 	events chan<- interface{}
 }
 
-func NewCoordinator(runner TaskRunner, events chan interface{}) *Coordinator {
+func NewCoordinator(runner TaskRunner) *Coordinator {
 	mu := &sync.Mutex{}
 	return &Coordinator{
 		mu:          mu,
@@ -67,9 +67,11 @@ func NewNotifier(coord *Coordinator, events chan<- interface{}) *Notifier {
 }
 
 func (cw *Notifier) Wait() {
-	cw.mu.Lock()
 	// Tell the Runner to start building if needed
 	cw.events <- nil
+	// Lock after sending event due to possible deadlock where we're
+	// waiting for the lock and can't send an event
+	cw.mu.Lock()
 	// Wait for server to be up
 	cw.c.Wait()
 	cw.mu.Unlock()
@@ -112,7 +114,6 @@ func (cr *CommandRunner) Start() error {
 	return nil
 }
 
-
 func (cr *CommandRunner) Kill() error {
 	if cr.process != nil {
 		if err := syscall.Kill(-cr.process.Pid, syscall.SIGINT); err != nil {
@@ -133,7 +134,7 @@ func (cr *Coordinator) Invalidate() {
 func (cr *Coordinator) HandleEvent() {
 	cr.mu.Lock()
 	if cr.invalidated {
-		go cr.runner.Start()
+		cr.runner.Start()
 		// Notify listeners that the command has been restarted
 		cr.invalidated = false
 	}
