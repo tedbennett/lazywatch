@@ -14,6 +14,8 @@ import (
 	"github.com/tedbennett/lazywatch/watcher"
 )
 
+// TEMP : TO REMOVE
+
 func main() {
 	config, err := config.ParseConfig()
 	if err != nil {
@@ -21,8 +23,8 @@ func main() {
 	}
 
 	events := make(chan interface{})
-	health := func() bool { return true }
-	runner := command.NewCommandRunner(config.Command, health)
+	healthCheck := command.NewHTTPHealthChecker(fmt.Sprintf("http://localhost:%s/health", config.Ports().Server), config.Client())
+	runner := command.NewCommandRunner(config.Command, healthCheck)
 	coordinator := command.NewCoordinator(runner)
 	notifier := command.NewNotifier(coordinator, events)
 	go coordinator.Listen(events)

@@ -55,6 +55,7 @@ func proxyRequest(w http.ResponseWriter, r *http.Request) {
 
 	url := fmt.Sprintf("http://localhost:%s/%s", config.Ports().Server, path)
 	req, _ := http.NewRequest(r.Method, url, r.Body)
+	req.Header = r.Header
 	res, err := config.Client().Do(req)
 	if err != nil {
 		fmt.Println("Failed to call server")
@@ -65,6 +66,7 @@ func proxyRequest(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set(name, value[0])
 		}
 	}
+	w.WriteHeader(res.StatusCode)
 	buf := make([]byte, 32*1024)
 	for {
 		n, err := res.Body.Read(buf)

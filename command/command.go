@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"sync"
@@ -22,6 +23,7 @@ func newCmd(command Command) *exec.Cmd {
 	cmd := exec.Command(command.executable, command.args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	return cmd
 }
 
@@ -39,6 +41,9 @@ type Coordinator struct {
 
 	runner      TaskRunner
 	invalidated bool
+
+	errors chan error
+	logger chan string
 }
 
 type Notifier struct {
@@ -78,16 +83,16 @@ func (cw *Notifier) Wait() {
 }
 
 type CommandRunner struct {
-	process *os.Process
-	command Command
-	healthy func() bool
+	process     *os.Process
+	command     Command
+	healthcheck HealthChecker
 }
 
-func NewCommandRunner(command Command, healthy func() bool) *CommandRunner {
+func NewCommandRunner(command Command, healthcheck HealthChecker) *CommandRunner {
 	return &CommandRunner{
-		command: command,
-		healthy: healthy,
-		process: nil,
+		command:     command,
+		healthcheck: healthcheck,
+		process:     nil,
 	}
 }
 
@@ -106,10 +111,13 @@ func (cr *CommandRunner) Start() error {
 
 	// Wait until the command is healthy
 	for {
-		if cr.healthy() {
+		// Sleep first since the killed server might still be listening
+		time.Sleep(time.Millisecond * 50)
+		if cr.healthcheck.Check() {
+			fmt.Println("Healthy")
 			break
 		}
-		time.Sleep(time.Millisecond * 50)
+		fmt.Println("Not healthy")
 	}
 	return nil
 }
@@ -134,6 +142,7 @@ func (cr *Coordinator) Invalidate() {
 func (cr *Coordinator) HandleEvent() {
 	cr.mu.Lock()
 	if cr.invalidated {
+		fmt.Println("Restarting server")
 		cr.runner.Start()
 		// Notify listeners that the command has been restarted
 		cr.invalidated = false
@@ -146,4 +155,25 @@ func (cr *Coordinator) Listen(events <-chan interface{}) {
 	for range events {
 		cr.HandleEvent()
 	}
+}
+
+type HealthChecker interface {
+	Check() bool
+}
+
+type HTTPHealthChecker struct {
+	url    string
+	client *http.Client
+}
+
+func NewHTTPHealthChecker(url string, client *http.Client) *HTTPHealthChecker {
+	return &HTTPHealthChecker{url, client}
+}
+
+func (hc *HTTPHealthChecker) Check() bool {
+	res, err := hc.client.Get(hc.url)
+	if err == nil && res.StatusCode == http.StatusOK {
+		return true
+	}
+	return false
 }
